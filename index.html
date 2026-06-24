@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Музейне дзеркало</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Crimson+Pro:wght@400;500;600&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&display=swap" />
+  <link rel="stylesheet" href="style.css" />
+  <!--email_off-->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three%400.165.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three%400.165.0/examples/jsm/"
+    }
+  }
+  </script>
+  <!--/email_off-->
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand">
+      <h1 class="wordmark">Museum<span>Mirror</span></h1>
+      <span class="subtitle">примірка одягу та взаємодія з експонатами</span>
+    </div>
+    <div class="meta">
+      <button id="ui-toggle" class="icon-btn" title="Приховати/показати панель">◐</button>
+      <span id="fps" class="metric">— fps</span>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="viewport">
+      <video id="camera" autoplay playsinline muted></video>
+      <!-- Three.js 3D overlay (in compositor mode this is offscreen-only) -->
+      <canvas id="overlay"></canvas>
+      <!-- Compositor output — visible only when realistic try-on is enabled -->
+      <canvas id="composite" class="hidden"></canvas>
+      <!-- Calibration skeleton ghost — shown only in calibration mode -->
+      <canvas id="skeleton" class="hidden"></canvas>
+      <div id="status" class="status"></div>
+      <!-- White flash overlay triggered by photo capture (shutter effect) -->
+      <div id="photo-flash" class="photo-flash"></div>
+    </div>
+
+    <aside class="controls">
+      <section class="panel" id="hat-panel"></section>
+      <section class="panel" id="top-panel"></section>
+      <section class="panel" id="right-hand-panel"></section>
+      <section class="panel" id="left-hand-panel"></section>
+
+      <!-- ── Tool row: mode toggle + calibration toggle + camera switch + try-on ── -->
+      <section class="panel tools-row">
+        <button id="mode-toggle" class="tool-btn">Режим: легкий ○</button>
+        <button id="calib-toggle" class="tool-btn">Калібрування</button>
+        <button id="camera-toggle" class="tool-btn">Камера: фронтальна</button>
+        <button id="tryon-toggle" class="tool-btn">Примірка ○</button>
+        <p class="tryon-note">
+          ⚠ Реалістична примірка з сегментацією + 3-шаровою композицією.
+          На мобільному <b>сильно знизить FPS</b> (до 3-8 кадрів/сек) та гріє телефон.
+        </p>
+      </section>
+
+      <!-- ── Calibration panel (hidden until toggled) ── -->
+      <section class="panel calib-panel hidden" id="calib-panel">
+        <h3>Калібрування зміщення</h3>
+
+        <div class="calib-gesture-hint">
+          <b>Жести:</b>
+          <ul>
+            <li>Pinch + рух → <b>одяг/убір:</b> перемістити; <b>експонат:</b> поворот X/Y</li>
+            <li>Два pinch одночасно → масштаб + поворот Z</li>
+          </ul>
+          <span>Експонати закріплені в долоні — їх не можна рухати, лише обертати.</span>
+        </div>
+
+        <div class="calib-slot-row">
+          <label for="calib-slot" class="calib-label">Слот</label>
+          <select id="calib-slot" class="calib-select">
+            <option value="hat">Головний убір</option>
+            <option value="top">Верхній одяг</option>
+            <option value="rightHand">Права рука</option>
+            <option value="leftHand">Ліва рука</option>
+          </select>
+        </div>
+
+        <p id="calib-noitem" class="empty-note">Спочатку оберіть предмет у цьому слоті.</p>
+
+        <div id="calib-sliders" class="hidden">
+          <!-- Offset -->
+          <div class="calib-group-label">Зміщення (offset)</div>
+          <div class="calib-row">
+            <span class="calib-axis">X</span>
+            <input id="calib-ox" type="range" min="-1" max="1" step="0.01" value="0" />
+            <span id="calib-ox-val" class="calib-val">0.00</span>
+          </div>
+          <div class="calib-row">
+            <span class="calib-axis">Y</span>
+            <input id="calib-oy" type="range" min="-1" max="1" step="0.01" value="0" />
+            <span id="calib-oy-val" class="calib-val">0.00</span>
+          </div>
+          <div class="calib-row">
+            <span class="calib-axis">Z</span>
+            <input id="calib-oz" type="range" min="-1" max="1" step="0.01" value="0" />
+            <span id="calib-oz-val" class="calib-val">0.00</span>
+          </div>
+
+          <!-- Rotation -->
+          <div class="calib-group-label">Поворот (°)</div>
+          <div class="calib-row">
+            <span class="calib-axis">X</span>
+            <input id="calib-rx" type="range" min="-180" max="180" step="1" value="0" />
+            <span id="calib-rx-val" class="calib-val">0.00</span>
+          </div>
+          <div class="calib-row">
+            <span class="calib-axis">Y</span>
+            <input id="calib-ry" type="range" min="-180" max="180" step="1" value="0" />
+            <span id="calib-ry-val" class="calib-val">0.00</span>
+          </div>
+          <div class="calib-row">
+            <span class="calib-axis">Z</span>
+            <input id="calib-rz" type="range" min="-180" max="180" step="1" value="0" />
+            <span id="calib-rz-val" class="calib-val">0.00</span>
+          </div>
+
+          <!-- Scale -->
+          <div class="calib-group-label">Масштаб</div>
+          <div class="calib-row">
+            <span class="calib-axis">S</span>
+            <input id="calib-scale" type="range" min="0.1" max="3.0" step="0.05" value="1" />
+            <span id="calib-scale-val" class="calib-val">1.00</span>
+          </div>
+
+          <button id="calib-reset" class="calib-reset-btn">Скинути</button>
+        </div>
+      </section>
+
+      <section class="panel actions">
+        <button id="photo-btn" class="primary">Зробити фото</button>
+      </section>
+    </aside>
+  </main>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

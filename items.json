@@ -1,0 +1,54 @@
+{
+  "hats": [
+    {
+      "id": "hat-kaska",
+      "label": "Каска",
+      "file": "models/hats/Kaska/81970e4cb69d479aa26c8cf2827b774e.glb",
+      "anchor": "helmet",
+      "offset": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "scale": 1.0
+    },
+    {
+      "id": "hat-sholom",
+      "label": "Шолом",
+      "file": "models/hats/Sholom/32127b2b00b04e50b2c693e7c46d4c0e.glb",
+      "anchor": "helmet",
+      "offset": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "scale": 1.0
+    }
+  ],
+  "tops": [
+    {
+      "id": "top-suknia",
+      "label": "Сукня",
+      "file": "models/tops/28.glb",
+      "offset": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "scale": 1.0
+    }
+  ],
+  "exhibits": [
+    {
+      "id": "exhibit-shpaha",
+      "label": "Шпага",
+      "file": "models/exhibits/Shpaha/ad05c0b7d67a419bb28137211357511a.glb",
+      "seatGrip": true,
+      "gripFlip": false,
+      "offset": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "scale": 3.0
+    },
+    {
+      "id": "exhibit-bulava",
+      "label": "Булава",
+      "file": "models/exhibits/bulava/a2a4db056af149a48503587640eff6b4.glb",
+      "seatGrip": true,
+      "gripFlip": false,
+      "offset": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "scale": 2.2
+    }
+  ]
+}

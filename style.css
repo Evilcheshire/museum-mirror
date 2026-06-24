@@ -1,0 +1,697 @@
+:root {
+  --serif: 'Crimson Pro', 'EB Garamond', Georgia, serif;
+  --sans:  'Inter', -apple-system, system-ui, sans-serif;
+  --mono:  'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+  /* Museum-daylight palette — warm cream + bronze gold */
+  --bg:            #f4efe4;
+  --panel:         #ffffff;
+  --panel-elev:    #ebe5d6;
+  --border:        #d8d1c0;
+  --border-strong: #b6ad96;
+  --text:          #1d1a14;
+  --text-dim:      #56503f;
+  --muted:         #8b8470;
+  --accent:        #9d6817;
+  --accent-hover:  #b27c2d;
+  --accent-dim:    rgba(157, 104, 23, 0.14);
+  --accent-text:   #ffffff;   /* readable text when the accent is a background */
+
+  /* Translucent panel base — kept light so backdrop-blur over the video
+     produces a frosted-cream look rather than a dark wash. */
+  --panel-translucent:       rgba(255, 252, 245, 0.70);
+  --panel-translucent-solid: rgba(255, 252, 245, 0.85);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Masthead ---------- */
+
+.masthead {
+  height: 56px;
+  padding: 0 24px;
+  /* background set in semi-transparent block lower down */
+  border-bottom: 0.5px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 10;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.wordmark {
+  font-family: 'Cormorant Garamond', var(--serif);
+  font-weight: 600;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: var(--text);
+}
+
+.wordmark span {
+  color: var(--accent);
+  font-style: italic;
+  font-weight: 500;
+}
+
+.subtitle {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding-left: 14px;
+  border-left: 0.5px solid var(--border);
+}
+
+.metric {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0.5px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
+}
+.icon-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.icon-btn:active { transform: scale(0.94); }
+
+/* ---------- Layout ---------- */
+
+.stage {
+  height: calc(100vh - 56px);
+  display: grid;
+  grid-template-columns: 1fr 340px;
+}
+
+.viewport {
+  position: relative;
+  background: #000;
+  overflow: hidden;
+}
+
+.viewport video,
+.viewport canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.viewport video {
+  transform: scaleX(-1);   /* selfie / mirror view — default */
+  z-index: 1;
+}
+.viewport video.no-mirror {
+  transform: none;         /* back camera — show natural orientation */
+}
+
+.viewport canvas {
+  z-index: 2;
+  pointer-events: none;
+}
+
+#composite { z-index: 2; }
+
+.status {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  padding: 14px 22px;
+  background: var(--panel-translucent-solid);
+  border: 0.5px solid var(--border-strong);
+  border-radius: 8px;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--text);
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.status:empty {
+  display: none;
+}
+
+/* ---------- Controls ---------- */
+
+.controls {
+  /* Slightly translucent — video bleeds through subtly. Strong blur keeps
+     text readable even with a soft background. */
+  background: var(--panel-translucent);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border-left: 0.5px solid var(--border);
+  overflow-y: auto;
+  padding: 24px 22px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  transition: transform 0.28s ease, opacity 0.28s ease;
+}
+
+/* Sticky photo button — more opaque so the primary action stays anchored. */
+.actions {
+  background: var(--panel-translucent-solid) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* Masthead — almost opaque to stay readable against any scene */
+.masthead {
+  background: var(--panel-translucent-solid);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.controls::-webkit-scrollbar {
+  width: 6px;
+}
+
+.controls::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.panel h3 {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-style: italic;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  text-transform: lowercase;
+}
+
+.panel h3::before {
+  content: '— ';
+  color: var(--muted);
+  font-style: normal;
+}
+
+.menu-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.menu-buttons button {
+  padding: 8px 14px;
+  background: transparent;
+  border: 0.5px solid var(--border);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.1s;
+  border-radius: 10px;
+}
+
+.menu-buttons button:active {
+  transform: scale(0.96);
+}
+
+.menu-buttons button:hover {
+  border-color: var(--border-strong);
+  color: var(--accent);
+}
+
+.menu-buttons button:focus-visible {
+  outline: 0.5px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.menu-buttons button.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.menu-buttons button.off.active {
+  background: transparent;
+  color: var(--text-dim);
+  border-color: var(--border-strong);
+}
+
+/* Actions panel is sticky to the bottom of the controls column so the photo
+   button stays in view no matter how much you've scrolled in the menu above. */
+.actions {
+  margin-top: auto;
+  padding-top: 14px;
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+  border-top: 0.5px solid var(--border);
+  position: sticky;
+  bottom: 0;
+  background: var(--panel);
+  z-index: 5;
+}
+
+button.primary {
+  width: 100%;
+  padding: 14px 18px;
+  background: transparent;
+  border: 0.5px solid var(--accent);
+  color: var(--accent);
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border-radius: 12px;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+}
+
+button.primary:hover {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+button.primary:active {
+  transform: scale(0.98);
+}
+
+button.primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+button.primary.saving {
+  /* Subtle moving stripe while the PNG is being encoded */
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    var(--accent-dim) 50%,
+    transparent 70%
+  );
+  background-size: 220% 100%;
+  animation: photo-saving-shimmer 0.9s linear infinite;
+  color: var(--text);      /* gold text would vanish into the shimmer */
+  border-color: var(--accent-hover);
+}
+
+button.primary.saved {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+@keyframes photo-saving-shimmer {
+  from { background-position: 220% 0; }
+  to   { background-position: -120% 0; }
+}
+
+/* ---------- Photo capture shutter flash ---------- */
+
+.photo-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: #ffffff;
+  opacity: 0;
+}
+
+.photo-flash.firing {
+  animation: photo-flash 0.45s ease-out;
+}
+
+@keyframes photo-flash {
+  0%   { opacity: 0; }
+  10%  { opacity: 0.85; }   /* sharp white pop */
+  40%  { opacity: 0.5; }
+  100% { opacity: 0; }      /* fade out */
+}
+
+/* ---------- Empty state ---------- */
+
+.empty-note {
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+  padding: 6px 0;
+}
+
+/* ---------- Skeleton canvas ---------- */
+
+#skeleton {
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* ---------- Utility ---------- */
+
+.hidden { display: none !important; }
+
+/* ---------- UI hidden mode ----------
+   When the user toggles the panel off, the viewport stretches to fill the
+   space and the controls slide off-screen. The masthead stays so the toggle
+   button (and fps readout) remain reachable. */
+
+body.ui-hidden .stage {
+  grid-template-columns: 1fr 0;
+}
+body.ui-hidden .controls {
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* On narrow screens controls live at the bottom — slide down instead */
+@media (max-width: 900px) {
+  body.ui-hidden .stage {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 0;
+  }
+  body.ui-hidden .controls {
+    transform: translateY(100%);
+  }
+}
+
+.stage {
+  transition: grid-template-columns 0.28s ease, grid-template-rows 0.28s ease;
+}
+
+/* ---------- Tools row (mode + calibration toggles) ---------- */
+
+.tools-row {
+  flex-direction: column;
+  gap: 6px;
+}
+.tools-row .tool-btn {
+  width: 100%;
+}
+
+.tool-btn {
+  flex: 1;
+  padding: 8px 12px;
+  background: transparent;
+  border: 0.5px solid var(--border-strong);
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.1s;
+}
+
+.tool-btn:active {
+  transform: scale(0.97);
+}
+
+.tool-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tool-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Try-on warning note — sits under the toggle row */
+.tryon-note {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: rgba(184, 132, 60, 0.08);
+  border: 0.5px dashed var(--border-strong);
+  border-radius: 6px;
+}
+.tryon-note b { color: var(--accent); font-weight: 500; }
+
+/* ---------- Calibration panel ---------- */
+
+.calib-panel {
+  border: 0.5px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--panel-elev);
+  gap: 8px;
+}
+
+.calib-gesture-hint {
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 4px 0 6px;
+}
+.calib-gesture-hint b { color: var(--accent); font-weight: 500; }
+.calib-gesture-hint ul { margin: 4px 0 0 14px; padding: 0; }
+.calib-gesture-hint li { margin: 2px 0; }
+
+.calib-slot-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calib-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.calib-select {
+  flex: 1;
+  background: var(--bg);
+  border: 0.5px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 11px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.calib-group-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+
+.calib-row {
+  display: grid;
+  grid-template-columns: 14px 1fr 36px;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.calib-axis {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+  text-align: center;
+}
+
+.calib-row input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 2px;
+  background: var(--border-strong);
+  outline: none;
+  cursor: pointer;
+}
+
+.calib-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.calib-row input[type="range"]::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.calib-val {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.calib-reset-btn {
+  margin-top: 10px;
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 0.5px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.calib-reset-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+
+/* ---------- Responsive ---------- */
+
+/* Tablet / narrow desktop — stack vertically, controls below viewport. */
+@media (max-width: 900px) {
+  .stage {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(45vh, 1fr) auto;
+  }
+  .viewport {
+    min-height: 45vh;
+  }
+  .controls {
+    border-left: none;
+    border-top: 0.5px solid var(--border);
+    max-height: 55vh;
+    padding: 18px 18px 0; /* bottom handled by sticky .actions */
+    gap: 16px;
+  }
+}
+
+/* Phone — tighter spacing, fewer panels visible at once.
+   The viewport gives ~50vh to the camera; controls scroll below.
+   Photo button stays pinned to the bottom via position: sticky. */
+@media (max-width: 600px) {
+  .masthead {
+    height: 48px;
+    padding: 0 14px;
+  }
+  .brand h1 { font-size: 16px; }
+  .subtitle { display: none; }
+
+  .stage {
+    height: calc(100vh - 48px);
+    height: calc(100dvh - 48px); /* respect mobile browser chrome */
+    grid-template-rows: 50vh 1fr;
+  }
+  .viewport { min-height: 0; }
+
+  .controls {
+    max-height: none;
+    padding: 14px 14px 0;
+    gap: 14px;
+  }
+
+  .panel h3 { font-size: 11px; }
+
+  .menu-buttons button {
+    padding: 9px 14px;
+    font-size: 13px;       /* larger tap targets */
+    min-height: 36px;
+  }
+
+  .tool-btn {
+    min-height: 36px;
+    font-size: 12px;
+  }
+
+  .actions {
+    padding-top: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  button.primary {
+    padding: 14px;
+    font-size: 15px;
+    min-height: 48px;
+  }
+
+  /* Calibration sliders — larger thumb so they're tappable */
+  .calib-row input[type="range"]::-webkit-slider-thumb {
+    width: 18px;
+    height: 18px;
+  }
+  .calib-row input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+  }
+  .calib-row input[type="range"] { height: 4px; }
+}
+
+/* Landscape phone — keep video and controls side-by-side, even on narrow heights */
+@media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
+  .stage {
+    grid-template-columns: 1fr 280px;
+    grid-template-rows: 1fr;
+  }
+  .controls {
+    border-left: 0.5px solid var(--border);
+    border-top: none;
+    max-height: none;
+  }
+}
