@@ -68,15 +68,9 @@ export class Scene {
     this.gltfLoader = new GLTFLoader();
     this.gltfLoader.setDRACOLoader(draco);
 
-    // OBJ + MTL — material library and texture maps resolved relative to the .obj path
-    this.objLoader = new OBJLoader();
-    this.mtlLoader = new MTLLoader();
-
-    // FBX — single-file binary with embedded textures
+    // FBX — single-file binary with embedded textures. (OBJ/MTL loaders are
+    // created per-load in _loadOBJ since they need per-file resource paths.)
     this.fbxLoader = new FBXLoader();
-
-    // Back-compat alias used by older callers expecting `.loader`
-    this.loader = this.gltfLoader;
   }
 
   setSize(width, height) {

@@ -43,13 +43,6 @@ export const HAND = {
 
 const VISIBILITY_THRESHOLD = 0.5;
 
-// How much the dress follows the body's yaw/pitch: 0 = always frontal billboard,
-// 1 = fully turns with the body (true 3D orientation). At ~90° profile a thin
-// garment mesh naturally goes edge-on — that's correct, and pose tracking is
-// unreliable there anyway. Lower this toward 0.7 if the dress vanishes too
-// readily at extreme angles.
-const TORSO_TURN_DAMP = 1.0;
-
 function visible(lm) {
   // visibility may be undefined for hand landmarks — treat as visible
   return lm && (lm.visibility === undefined || lm.visibility > VISIBILITY_THRESHOLD);
@@ -429,13 +422,15 @@ export function computeHelmet(pose, worldPose, scene) {
 }
 
 
-// TORSO: the dress blends between a camera-facing billboard and the body's true
-// 3D orientation (TORSO_TURN_DAMP). Pure billboard ignores turning; pure 3D
-// makes the thin garment mesh go edge-on and "shrink" on rotation. Blending
-// follows the turn while staying readable.
+// TORSO: an UPRIGHT garment that YAWS with the body.
+//   - "Up" is locked to world-vertical, so the dress never tilts or rides up —
+//     including when you turn your back (the old full-3D basis flipped/​rose).
+//   - The facing direction (yaw) comes from the shoulder line's HORIZONTAL
+//     orientation in 3D: facing camera → front of dress; back to camera → back;
+//     sideways → side. So it turns with you, just stays vertical.
 //
-// POSITION: shoulder line, raised to the neck base (image landmarks).
-// SCALE:    shoulder width, foreshorten-compensated so it stays constant on turn.
+// POSITION: shoulder line, raised to the neck base. SCALE: shoulder width,
+// foreshorten-compensated so it stays constant through a turn.
 export function computeTorso(pose, worldPose, scene) {
   const lShoulder = pose[POSE.LEFT_SHOULDER];
   const rShoulder = pose[POSE.RIGHT_SHOULDER];
@@ -445,44 +440,58 @@ export function computeTorso(pose, worldPose, scene) {
   const rShW = scene.imageToWorld(rShoulder.x, rShoulder.y, 0);
   const shMid = new THREE.Vector3().addVectors(lShW, rShW).multiplyScalar(0.5);
 
-  let shoulderWidth = Math.hypot(rShW.x - lShW.x, rShW.y - lShW.y);
+  // SCALE from the yaw-invariant TORSO HEIGHT (shoulders → hips). Shoulder WIDTH
+  // foreshortens when you turn sideways, and MediaPipe's depth (z) is too noisy
+  // to compensate reliably — that's why the dress dropped to ~0.7 on turning.
+  // The vertical torso length doesn't change when you turn left/right, so the
+  // scale stays constant. Falls back to (foreshorten-compensated) shoulder width
+  // when hips are out of frame (e.g. a waist-up shot).
+  const lHip = pose[POSE.LEFT_HIP];
+  const rHip = pose[POSE.RIGHT_HIP];
+  let scale;
+  if (visible(lHip) && visible(rHip)) {
+    const lHipW = scene.imageToWorld(lHip.x, lHip.y, 0);
+    const rHipW = scene.imageToWorld(rHip.x, rHip.y, 0);
+    const hipMid = new THREE.Vector3().addVectors(lHipW, rHipW).multiplyScalar(0.5);
+    // 0.8 maps average shoulder-to-hip length to the previous shoulder-width
+    // scale; tune per-model with config.scale in items.json.
+    scale = shMid.distanceTo(hipMid) * 0.8;
+  } else {
+    let sw = Math.hypot(rShW.x - lShW.x, rShW.y - lShW.y);
+    if (worldPose && worldPose[POSE.LEFT_SHOULDER] && worldPose[POSE.RIGHT_SHOULDER]) {
+      sw *= _foreshortenRatio(worldPose[POSE.LEFT_SHOULDER], worldPose[POSE.RIGHT_SHOULDER]);
+    }
+    scale = Math.max(sw, 0.10) * 1.3;
+  }
+
+  let quat;
   if (worldPose && worldPose[POSE.LEFT_SHOULDER] && worldPose[POSE.RIGHT_SHOULDER]) {
-    shoulderWidth *= _foreshortenRatio(worldPose[POSE.LEFT_SHOULDER], worldPose[POSE.RIGHT_SHOULDER]);
-  }
-  shoulderWidth = Math.max(shoulderWidth, 0.10);
-  const scale = shoulderWidth * 1.3; // model is width-normalised (see load)
-
-  // Frontal billboard basis: x = shoulder line (screen), y = up, z = camera.
-  const xF = new THREE.Vector3(rShW.x - lShW.x, rShW.y - lShW.y, 0).normalize();
-  const zF = new THREE.Vector3(0, 0, 1);
-  const yF = new THREE.Vector3().crossVectors(zF, xF).normalize();
-  const qFrontal = new THREE.Quaternion().setFromRotationMatrix(
-    new THREE.Matrix4().makeBasis(xF, yF, zF)
-  );
-
-  let quat = qFrontal;
-  // Blend toward the true 3D orientation from worldLandmarks (dampened turn).
-  if (worldPose && worldPose[POSE.LEFT_SHOULDER] && worldPose[POSE.RIGHT_SHOULDER] &&
-      worldPose[POSE.LEFT_HIP] && worldPose[POSE.RIGHT_HIP]) {
-    const a = _wl(worldPose[POSE.LEFT_SHOULDER]), b = _wl(worldPose[POSE.RIGHT_SHOULDER]);
-    const lh = _wl(worldPose[POSE.LEFT_HIP]), rh = _wl(worldPose[POSE.RIGHT_HIP]);
-    const wShMid = a.clone().add(b).multiplyScalar(0.5);
-    const wHipMid = lh.clone().add(rh).multiplyScalar(0.5);
-    const x3 = new THREE.Vector3().subVectors(a, b).normalize();
-    const y3 = new THREE.Vector3().subVectors(wShMid, wHipMid).normalize();
-    const z3 = new THREE.Vector3().crossVectors(x3, y3).normalize();
-    const yC = new THREE.Vector3().crossVectors(z3, x3).normalize();
-    const qFull = new THREE.Quaternion().setFromRotationMatrix(
-      new THREE.Matrix4().makeBasis(x3, yC, z3)
+    // Upright-yaw basis built in the non-mirrored frame, then mirror-corrected.
+    const a = _wl(worldPose[POSE.LEFT_SHOULDER]);
+    const b = _wl(worldPose[POSE.RIGHT_SHOULDER]);
+    // Horizontal component of the shoulder line only → pure yaw, no tilt/rise.
+    const xAxis = new THREE.Vector3(a.x - b.x, 0, a.z - b.z);
+    if (xAxis.lengthSq() < 1e-6) xAxis.set(1, 0, 0);
+    xAxis.normalize();
+    const yAxis = new THREE.Vector3(0, 1, 0);
+    const zAxis = new THREE.Vector3().crossVectors(xAxis, yAxis).normalize();
+    const m = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
+    quat = new THREE.Quaternion().setFromRotationMatrix(m);
+    if (scene.mirror) _mirrorQuat(quat);
+  } else {
+    // Image fallback: frontal billboard with shoulder-line roll.
+    const xF = new THREE.Vector3(rShW.x - lShW.x, rShW.y - lShW.y, 0).normalize();
+    const zF = new THREE.Vector3(0, 0, 1);
+    const yF = new THREE.Vector3().crossVectors(zF, xF).normalize();
+    quat = new THREE.Quaternion().setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(xF, yF, zF)
     );
-    if (scene.mirror) _mirrorQuat(qFull);
-    quat = qFrontal.clone().slerp(qFull, TORSO_TURN_DAMP);
   }
 
-  // Raise the anchor from the shoulder JOINTS to the neck base, then seat the
-  // model's TOP edge there so the dress hangs from the shoulders.
-  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(quat);
-  const anchor = shMid.clone().add(up.multiplyScalar(shoulderWidth * 0.18));
+  // Up is world-vertical, so raise straight up to the neck base; apply() seats
+  // the model's TOP edge there so the dress hangs from the shoulders. The raise
+  // is tied to `scale` (also yaw-invariant) so the collar stays put on turning.
+  const anchor = shMid.clone().add(new THREE.Vector3(0, scale * 0.14, 0));
   return { position: anchor, scale, quaternion: quat, edge: "top" };
 }
 

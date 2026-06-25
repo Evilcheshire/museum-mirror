@@ -30,6 +30,8 @@ let tryonEnabled = false;
 // a new segmentation frame arrives (tracked via builtMaskRef), not every frame.
 let skinMaskCanvas, skinMaskCtx;
 let builtMaskRef = null;
+let segTick = 0;          // throttle counter for the segmenter
+const SEG_EVERY = 2;      // run segmentation every Nth frame (mask changes slowly)
 
 // Mobile detection — used to warn that the try-on pipeline is heavy on phones,
 // and to hide the back-camera toggle on desktops (single front webcam).
@@ -52,11 +54,14 @@ let currentFacing = "user";
 // ---------- Gesture state ----------
 // Pinch-based editing in calibration mode. One-hand pinch drags offset X/Y,
 // two-hand pinch scales (distance) and rotates Z (angle of line between them).
-// Pinch detection thresholds — relaxed so the gesture engages easily.
-// User feedback: previous 0.40 / 0.55 felt "too strict", scale gesture never
-// activated because the second hand often didn't reach pinch state.
-const GESTURE_PINCH_GRAB    = 0.60;  // tip-distance / hand-size to ENTER pinch
-const GESTURE_PINCH_RELEASE = 0.78;  // hysteresis to EXIT pinch (avoids flicker)
+// Pinch detection thresholds. Tightened for control: a clear pinch is required,
+// and the hand must be fully in frame and held for a few frames before a gesture
+// engages — so a hand that's just relaxed, partly off-camera, or passing by
+// doesn't trigger anything.
+const GESTURE_PINCH_GRAB    = 0.45;  // tip-distance / hand-size to ENTER pinch
+const GESTURE_PINCH_RELEASE = 0.62;  // hysteresis to EXIT pinch (avoids flicker)
+const GESTURE_ENGAGE_FRAMES = 4;     // consecutive pinched frames before acting
+const GESTURE_EDGE_MARGIN   = 0.04;  // reject hands whose key points leave frame
 const GESTURE_TRANSLATE_SENS = 1.6;  // 1 full screen swipe ≈ 1.6 model units
 const GESTURE_ROTATE_SENS = 360;     // 1 full screen swipe ≈ 360° (exhibits)
 const GESTURE_SCALE_MIN = 0.1;
@@ -65,8 +70,9 @@ const GESTURE_SCALE_MIN = 0.1;
 const GESTURE_TWO_HAND_MIN_DIST = 0.08; // 8% of image width
 
 const gestureState = {
-  mode: "idle",              // "idle" | "translate" | "scale-rotate"
-  pinchedHands: new Set(),   // which hand indices are currently considered pinched
+  mode: "idle",              // "idle" | "translate" | "rotate-xy" | "scale-rotate"
+  pinchedHands: new Set(),   // hand indices pinched THIS frame (for hysteresis)
+  pinchStreak: new Map(),    // hand index → consecutive pinched frames (engage delay)
   startPinches: null,        // initial pinch positions for the active gesture
   startDistance: 0,
   startAngle: 0,
@@ -76,6 +82,7 @@ const gestureState = {
 function resetGesture() {
   gestureState.mode = "idle";
   gestureState.pinchedHands.clear();
+  gestureState.pinchStreak.clear();
   gestureState.startPinches = null;
   gestureState.startConfig = null;
 }
@@ -315,11 +322,11 @@ async function toggleTryon() {
   if (!btn) return;
 
   if (!tryonEnabled) {
-    // Mobile warning — full pipeline can drop to single-digit FPS.
+    // Mobile warning — the segmenter + extra render pass lower FPS.
     if (IS_MOBILE) {
       const ok = window.confirm(
-        "Режим повної примірки використовує сегментер + 3 рендер-проходи.\n\n" +
-        "На мобільному це може знизити FPS до 3-8 і нагріти телефон.\n\n" +
+        "Оклюзія рук вмикає сегментер MediaPipe.\n\n" +
+        "На мобільному це помітно знизить FPS і гріє телефон.\n\n" +
         "Все одно увімкнути?"
       );
       if (!ok) return;
@@ -422,33 +429,42 @@ function buildHandRegion(w, h) {
 function renderRealistic(t) {
   const W = compositeCanvas.width;
   const H = compositeCanvas.height;
-  const mask = tracker.segment(video, t);
 
-  // Hair+skin mask, rebuilt only when segmentation changes.
+  compositeCtx.clearRect(0, 0, W, H);
+  drawMirroredVideo(compositeCtx, W, H);
+
+  // Hand occlusion only matters when a dress is worn AND a hand is in frame.
+  // Otherwise fall through to a single cheap render pass with no segmenter —
+  // this is the main optimisation (helmet-only / hands-down ≈ normal-mode FPS).
+  const occlude = !!selected.top && lastHands.length > 0;
+
+  if (!occlude) {
+    scene.camera.layers.enableAll();
+    scene.renderer.clear();
+    scene.render();
+    compositeCtx.drawImage(threeCanvas, 0, 0, W, H);
+    return;
+  }
+
+  // Segmentation — throttled to every Nth frame; cached mask reused between.
+  let mask = tracker.lastMask;
+  if (segTick++ % SEG_EVERY === 0) mask = tracker.segment(video, t);
   if (mask && mask !== builtMaskRef) {
     buildMaskCanvas(mask, [
       SEG_CLASS.HAIR, SEG_CLASS.BODY_SKIN, SEG_CLASS.FACE_SKIN,
     ], skinMaskCanvas, skinMaskCtx);
     builtMaskRef = mask;
   }
-  const haveMask = !!builtMaskRef;
 
-  compositeCtx.clearRect(0, 0, W, H);
-
-  // (1) video base
-  drawMirroredVideo(compositeCtx, W, H);
-
-  // (2) virtual TOPS (dress) — rendered full over the body (no silhouette clip)
+  // (1) TOPS (dress) over the body
   scene.camera.layers.set(LAYER.TOPS);
   scene.renderer.clear();
   scene.render();
   compositeCtx.drawImage(threeCanvas, 0, 0, W, H);
 
-  // (3) skin overlay, RESTRICTED TO HAND VICINITY — only a hand crossing in
-  //     front of the dress re-appears over it. Skin = video ∩ skin-mask ∩
-  //     hand-region. Static shoulders/neck are outside the hand region, so the
-  //     dress straps stay intact.
-  if (haveMask && lastHands.length) {
+  // (2) skin overlay, restricted to the HAND VICINITY — only a hand crossing in
+  //     front of the dress re-appears over it (skin ∩ skin-mask ∩ hand-region).
+  if (builtMaskRef) {
     buildHandRegion(W, H);
     drawMirroredVideo(skinCtx, W, H);
     skinCtx.save();
@@ -459,7 +475,7 @@ function renderRealistic(t) {
     compositeCtx.drawImage(skinCanvas, 0, 0);
   }
 
-  // (4) HATS + HAND items on top (helmet above hair, weapon fully visible)
+  // (3) HATS + HAND items on top (helmet above hair, weapon fully visible)
   scene.camera.layers.set(LAYER.HATS);
   scene.camera.layers.enable(LAYER.HAND_ITEMS);
   scene.renderer.clear();
@@ -819,6 +835,15 @@ function readHandPinch(handLm) {
   const wrist = handLm[0];   // WRIST
   const middle = handLm[9];  // MIDDLE_MCP
   if (!thumb || !index || !wrist || !middle) return null;
+
+  // Reject hands that are (partly) outside the frame. When a hand leaves the
+  // view MediaPipe extrapolates landmarks off-screen, which produced phantom
+  // pinches. Require all key points to be well inside the frame.
+  const m = GESTURE_EDGE_MARGIN;
+  for (const lm of [thumb, index, wrist, middle]) {
+    if (lm.x < m || lm.x > 1 - m || lm.y < m || lm.y > 1 - m) return null;
+  }
+
   const tipDist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
   const handSize = Math.hypot(wrist.x - middle.x, wrist.y - middle.y) || 1e-6;
   return {
@@ -841,19 +866,25 @@ function updateGesture(hands) {
   const att = id ? attachments.get(id) : null;
   if (!att) { resetGesture(); return; }
 
-  // Build list of pinches that are active THIS frame, with hysteresis.
+  // Build the list of pinches that count THIS frame. A pinch only counts after
+  // it's been held for GESTURE_ENGAGE_FRAMES consecutive frames (engage delay),
+  // and readHandPinch already rejects hands that are leaving the frame.
   const active = [];
-  const newPinched = new Set();
+  const nowPinched = new Set();
+  const nextStreak = new Map();
   for (let i = 0; i < hands.length; i++) {
     const p = readHandPinch(hands[i]);
     if (!p) continue;
     const was = gestureState.pinchedHands.has(i);
     if (isPinchedNow(p, was)) {
-      newPinched.add(i);
-      active.push(p);
+      nowPinched.add(i);
+      const streak = (gestureState.pinchStreak.get(i) || 0) + 1;
+      nextStreak.set(i, streak);
+      if (streak >= GESTURE_ENGAGE_FRAMES) active.push(p); // engaged only after delay
     }
   }
-  gestureState.pinchedHands = newPinched;
+  gestureState.pinchedHands = nowPinched;
+  gestureState.pinchStreak = nextStreak;
 
   if (active.length === 0) {
     gestureState.mode = "idle";

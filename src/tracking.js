@@ -28,7 +28,7 @@ import {
 const WASM_BASE =
   "https://unpkg.com/@mediapipe/tasks-vision%400.10.7/wasm";
 
-export const POSE_MODELS = {
+const POSE_MODELS = {
   lite: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
   full: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task",
 };
@@ -141,18 +141,17 @@ export class Tracker {
     }
   }
 
-  // Returns { pose, hands, handedness }. Pass needPose/needHands = false to
-  // skip the corresponding detector — saves a lot of CPU/GPU per frame on
-  // mobile when nothing is selected for that anchor.
-  // Returns image landmarks (0..1 image coords, used for SCREEN POSITION)
-  // and worldLandmarks (3D coords in metres, used for ROTATION-STABLE
-  // ORIENTATION even at extreme side angles where image landmarks degenerate).
+  // Returns { pose, worldPose, hands, handedness }. Pass needPose/needHands =
+  // false to skip a detector (saves CPU/GPU when that anchor is unused).
+  //   pose       — 33 image landmarks (0..1), used for SCREEN POSITION
+  //   worldPose  — 33 metric 3D landmarks, used for rotation-stable ORIENTATION
+  //   hands      — per-hand 21 image landmarks; handedness — left/right labels
   detect(video, timestamp, { needPose = true, needHands = true } = {}) {
     if (this._switching || !this.pose || !this.hands) {
-      return { pose: null, worldPose: null, hands: [], handedness: [], worldHands: [] };
+      return { pose: null, worldPose: null, hands: [], handedness: [] };
     }
     let pose = null, worldPose = null;
-    let hands = [], handedness = [], worldHands = [];
+    let hands = [], handedness = [];
     if (needPose) {
       const r = this.pose.detectForVideo(video, timestamp);
       pose      = r.landmarks?.[0] ?? null;
@@ -162,8 +161,7 @@ export class Tracker {
       const r = this.hands.detectForVideo(video, timestamp);
       hands      = r.landmarks ?? [];
       handedness = r.handednesses ?? [];
-      worldHands = r.worldLandmarks ?? [];
     }
-    return { pose, worldPose, hands, handedness, worldHands };
+    return { pose, worldPose, hands, handedness };
   }
 }
